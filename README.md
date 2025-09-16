@@ -1,2 +1,2 @@
 # sisop2
-Repository to store and work on the exercises of the course Operating Systems II
+Repository to store and work on the exercises and final project of the course Operating Systems II
