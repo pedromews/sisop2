@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat WebSocket</title>
+  <style>
+    body { font-family: Arial; margin: 30px; }
+    #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 5px; }
+    #input { width: 80%; }
+  </style>
+</head>
+<body>
+  <h1>Chat com WebSockets</h1>
+  <div id="messages"></div>
+  <input id="input" placeholder="Digite uma mensagem..." />
+  <button onclick="sendMessage()">Enviar</button>
+
+  <script>
+    const ws = new WebSocket("ws://localhost:8080/chat");
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("input");
+
+    ws.onopen = () => {
+      messages.innerHTML += "<div><em>Conectado ao servidor.</em></div>";
+    };
+
+    ws.onmessage = (event) => {
+      messages.innerHTML += `<div>${event.data}</div>`;
+      messages.scrollTop = messages.scrollHeight;
+    };
+
+    ws.onclose = () => {
+      messages.innerHTML += "<div><em>Desconectado.</em></div>";
+    };
+
+    function sendMessage() {
+      const msg = input.value.trim();
+      if (msg) {
+        ws.send(msg);
+        input.value = "";
+      }
+    }
+  </script>
+</body>
+</html>
