@@ -18,7 +18,7 @@ async def http_handler(path, request_headers):
         headers = Headers(**{"Content-Type": "text/html; charset=utf-8"})
         return HTTPStatus.OK, headers, body
 
-    return None  # deixa o upgrade WS ocorrer
+    return None  # deixa o upgrade WS ocorrer 
 
 async def chat(websocket, path, sessions={}):
     remote = websocket.remote_address
