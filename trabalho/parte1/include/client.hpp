@@ -7,10 +7,12 @@
 #include <string>
 #include <netinet/in.h>
 
+using namespace std;
+
 struct ClientPrintInfo {
-    std::string server_ip;
+    string server_ip;
     uint32_t seqn;
-    std::string dest_ip;
+    string dest_ip;
     uint32_t value;
     uint32_t new_balance;
 };
@@ -25,21 +27,22 @@ class Client {
         void start_interface();
         void start_processing();
         bool wait_for_socket(int fd, int seconds);
+        string timestamp_now();
 
         int sock_;
         uint16_t port_;
         sockaddr_in server_addr_;
         socklen_t server_len_;
-        std::thread discovery_thread_;
-        std::thread interface_thread_;
-        std::thread processing_thread_;
+        thread discovery_thread_;
+        thread interface_thread_;
+        thread processing_thread_;
 
-        std::mutex print_mtx_;
-        std::condition_variable print_cv_;
-        std::queue<ClientPrintInfo> print_queue_;
+        mutex print_mtx_;
+        condition_variable print_cv_;
+        queue<ClientPrintInfo> print_queue_;
 
-        std::mutex input_mtx_;
-        std::queue<std::pair<std::string, uint32_t>> input_queue_;
+        mutex input_mtx_;
+        queue<pair<string, uint32_t>> input_queue_;
 
         bool discovered_ = false;
         bool running_ = true;

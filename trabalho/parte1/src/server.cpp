@@ -1,26 +1,17 @@
 #include "server.hpp"
 #include "udp_util.hpp"
 #include "discovery.hpp"
+#include "utils.hpp"
 #include <iostream>
 #include <arpa/inet.h>
-#include <chrono>
-#include <ctime>
-#include <iomanip>
 
 using namespace std;
 
-static string timestamp_now() {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    time_t t = system_clock::to_time_t(now);
-    tm tm = *localtime(&t);
-    char buf[64];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
-    return string(buf);
-}
-
 Server::Server(uint16_t port, uint32_t registration_balance)
-    : sock_(create_udp_server_socket(port)), state_(registration_balance) {}
+    : sock_(create_udp_server_socket(port)), state_(registration_balance) {
+    cout << timestamp_now()
+        << " num_transactions 0 total_transferred 0 total_balance 0" << endl;
+}
 
 void Server::run() {
     start_discovery();
@@ -74,7 +65,7 @@ void Server::start_interface() {
                      << " dest " << info.dest_ip
                      << " value " << info.value << endl;
 
-                cout << "num_transactions " << info.stats.num_transactions << endl
+                cout << "num_transactions " << info.stats.num_transactions
                      << " total_transferred " << info.stats.total_transferred
                      << " total_balance " << info.stats.total_balance << endl;
 

@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "udp_util.hpp"
+#include "utils.hpp"
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
@@ -52,7 +53,7 @@ void Client::start_discovery() {
                 if (n > 0) {
                     packet_to_host(r);
                     if (r.type == PKT_DESC_ACK) {
-                        cout << "server addr " << inet_ntoa(server_addr_.sin_addr) << endl;
+                        cout << timestamp_now() << " server addr " << inet_ntoa(server_addr_.sin_addr) << endl;
                         discovered_ = true;
                         break;
                     }
@@ -78,7 +79,8 @@ void Client::start_interface() {
                 print_queue_.pop();
                 lock.unlock();
 
-                cout << "server " << info.server_ip
+                cout << timestamp_now()
+                     << " server " << info.server_ip
                      << " id req " << info.seqn
                      << " dest " << info.dest_ip
                      << " value " << info.value
