@@ -47,6 +47,6 @@ class Client {
         bool discovered_ = false;
         std::atomic<bool> running_{true};
 
-        static constexpr int DISCOVERY_TIMEOUT_SEC = 0.5;
+        static constexpr double DISCOVERY_TIMEOUT_SEC = 0.5;
         static constexpr double REQUEST_TIMEOUT_SEC = 0.01; // 10 milliseconds
 };

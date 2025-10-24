@@ -7,11 +7,11 @@
 #include <condition_variable>
 
 struct PrintInfo {
-    string client_ip;
+    std::string client_ip;
     uint32_t seqn;
-    string dest_ip;
+    std::string dest_ip;
     uint32_t value;
-    string status;
+    std::string status;
     ServerStats stats;
 };
 
@@ -27,10 +27,10 @@ class Server {
 
         int sock_;
         ServerState state_;
-        thread discovery_thread_;
-        thread interface_thread_;
+        std::thread discovery_thread_;
+        std::thread interface_thread_;
 
-        mutex print_mtx_;
-        condition_variable print_cv_;
-        queue<PrintInfo> print_queue_;
+        std::mutex print_mtx_;
+        std::condition_variable print_cv_;
+        std::queue<PrintInfo> print_queue_;
 };
