@@ -3,8 +3,6 @@
 #include <cstring>
 #include <arpa/inet.h>
 
-using namespace std;
-
 constexpr uint16_t PKT_DESC = 1;
 constexpr uint16_t PKT_DESC_ACK = 2;
 constexpr uint16_t PKT_REQ = 3;

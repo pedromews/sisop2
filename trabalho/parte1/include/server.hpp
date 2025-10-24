@@ -6,8 +6,6 @@
 #include <mutex>
 #include <condition_variable>
 
-using namespace std;
-
 struct PrintInfo {
     string client_ip;
     uint32_t seqn;

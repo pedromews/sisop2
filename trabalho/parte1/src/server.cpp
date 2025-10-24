@@ -19,9 +19,8 @@ void Server::run() {
 
     while (true) {
         sockaddr_in src{};
-        socklen_t slen = sizeof(src);
         packet_t p{};
-        ssize_t n = recvfrom(sock_, &p, sizeof(p), 0, (sockaddr*)&src, &slen);
+        ssize_t n = udp_receive(sock_, &p, sizeof(p), &src);
         
         if (n <= 0) continue;
 
@@ -85,9 +84,9 @@ void Server::handle_request(packet_t p, sockaddr_in src) {
     ack.body.ack.seqn = ack_seq;
     ack.body.ack.new_balance = balance;
     packet_to_network(ack);
-    sendto(sock_, &ack, sizeof(ack), 0, (sockaddr*)&src, sizeof(src));
+    udp_send(sock_, &ack, sizeof(ack), &src);
 
-    string client_ip = inet_ntoa(src.sin_addr);
+    string client_ip = sockaddr_to_ipstr(src);
     in_addr dest_in; dest_in.s_addr = htonl(p.body.req.dest_addr);
     string dest_ip = inet_ntoa(dest_in);
     string status = processed ? "OK" : (p.seqn <= ack_seq ? "DUP" : "MISSING");

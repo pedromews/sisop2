@@ -43,3 +43,32 @@ string sockaddr_to_ipstr(const sockaddr_in& sa) {
     inet_ntop(AF_INET, &sa.sin_addr, buf, sizeof(buf));
     return string(buf);
 }
+
+ssize_t udp_send(int sock, const void* buf, size_t len, const sockaddr_in* dest_addr) {
+    return sendto(sock, buf, len, 0, (const sockaddr*)dest_addr, sizeof(sockaddr_in));
+}
+
+ssize_t udp_receive(int sock, void* buf, size_t len, sockaddr_in* src_addr) {
+    socklen_t src_len = sizeof(sockaddr_in);
+    return recvfrom(sock, buf, len, 0, (sockaddr*)src_addr, &src_len);
+}
+
+bool udp_wait_for_socket(int fd, double timeout) {
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+
+    struct timeval tv;
+    tv.tv_sec = static_cast<long>(timeout);
+    tv.tv_usec = static_cast<long>((timeout - tv.tv_sec) * 1000000);
+
+    int rv = select(fd + 1, &readfds, NULL, NULL, &tv);
+    return rv > 0 && FD_ISSET(fd, &readfds);
+}
+
+ssize_t udp_receive_packet(int sock, void* packet, size_t packet_size, sockaddr_in* src_addr, double timeout) {
+    if (udp_wait_for_socket(sock, timeout)) {
+        return udp_receive(sock, packet, packet_size, src_addr);
+    }
+    return -1; // Timeout or error
+}

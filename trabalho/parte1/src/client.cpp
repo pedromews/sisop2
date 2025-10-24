@@ -6,30 +6,30 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
+#include <csignal>
+#include <atomic>
+#include <chrono>
 
 using namespace std;
 
-constexpr int CLIENT_RETRIES = 5;
-constexpr int CLIENT_TIMEOUT_SEC = 2;
+Client* g_client_instance = nullptr;
 
-Client::Client(uint16_t port) : port_(port) {
+void signal_handler(int signum) {
+    if (g_client_instance) {
+        g_client_instance->stop();
+    }
+}
+
+Client::Client(uint16_t port) : port_(port), running_(true) {
+    g_client_instance = this;
     sock_ = create_udp_client_socket();
     int yes = 1;
     setsockopt(sock_, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
     server_len_ = sizeof(server_addr_);
 }
 
-bool Client::wait_for_socket(int fd, int seconds) {
-    fd_set readfds;
-    FD_ZERO(&readfds);
-    FD_SET(fd, &readfds);
-
-    struct timeval tv;
-    tv.tv_sec = seconds;
-    tv.tv_usec = 0;
-
-    int rv = select(fd + 1, &readfds, NULL, NULL, &tv);
-    return rv > 0 && FD_ISSET(fd, &readfds);
+bool Client::wait_for_socket(int fd, double timeout) {
+    return udp_wait_for_socket(fd, timeout);
 }
 
 void Client::start_discovery() {
@@ -44,25 +44,29 @@ void Client::start_discovery() {
         bcast.sin_port = htons(port_);
         bcast.sin_addr.s_addr = INADDR_BROADCAST;
 
-        for (int attempt = 0; attempt < CLIENT_RETRIES && !discovered_; ++attempt) {
-            sendto(sock_, &p, sizeof(p), 0, (sockaddr*)&bcast, sizeof(bcast));
+        while (!discovered_ && running_) {
+            udp_send(sock_, &p, sizeof(p), &bcast);
 
-            if (wait_for_socket(sock_, CLIENT_TIMEOUT_SEC)) {
-                packet_t r{};
-                ssize_t n = recvfrom(sock_, &r, sizeof(r), 0, (sockaddr*)&server_addr_, &server_len_);
-                if (n > 0) {
-                    packet_to_host(r);
-                    if (r.type == PKT_DESC_ACK) {
-                        cout << timestamp_now() << " server addr " << inet_ntoa(server_addr_.sin_addr) << endl;
-                        discovered_ = true;
-                        break;
-                    }
+            packet_t r{};
+            ssize_t n = udp_receive_packet(sock_, &r, sizeof(r), &server_addr_, DISCOVERY_TIMEOUT_SEC);
+            
+            if (n > 0) {
+                packet_to_host(r);
+                if (r.type == PKT_DESC_ACK) {
+                    cout << timestamp_now() << " server addr " << sockaddr_to_ipstr(server_addr_) << endl;
+                    discovered_ = true;
+                    break;
                 }
+            }
+
+            if (!discovered_) {
+                cerr << "Discovery attempt failed, retrying..." << endl;
+                this_thread::sleep_for(chrono::seconds(1)); // Wait before retrying
             }
         }
 
         if (!discovered_) {
-            cerr << "Discovery failed after retries";
+            cerr << "Discovery process terminated without finding a server." << endl;
             running_ = false;
         }
     });
@@ -95,9 +99,14 @@ void Client::start_interface() {
 void Client::start_processing() {
     processing_thread_ = thread([this]() {
         uint32_t seqn = 1;
+
         while (running_) {
             string line;
-            if (!getline(cin, line)) break;
+            if (!getline(cin, line)) {
+                cout << "EOF detected. Shutting down client..." << endl;
+                stop();
+                break;
+            }
             if (line.empty()) continue;
 
             istringstream iss(line);
@@ -113,36 +122,50 @@ void Client::start_processing() {
             packet_to_network(req);
 
             bool acked = false;
-            for (int attempt = 0; attempt < CLIENT_RETRIES && !acked; ++attempt) {
-                sendto(sock_, &req, sizeof(req), 0, (sockaddr*)&server_addr_, server_len_);
+            while (!acked && running_) {
+                udp_send(sock_, &req, sizeof(req), &server_addr_);
 
-                if (wait_for_socket(sock_, CLIENT_TIMEOUT_SEC)) {
-                    packet_t ack{};
-                    ssize_t m = recvfrom(sock_, &ack, sizeof(ack), 0, NULL, NULL);
-                    if (m > 0) {
-                        packet_to_host(ack);
-                        if (ack.type == PKT_REQ_ACK) {
-                            {
-                                lock_guard<mutex> lock(print_mtx_);
-                                print_queue_.push({inet_ntoa(server_addr_.sin_addr), ack.seqn, dest_ip, value, ack.body.ack.new_balance});
-                            }
-                            print_cv_.notify_one();
-                            acked = true;
-                            break;
+                packet_t ack{};
+                sockaddr_in src_addr;
+                ssize_t m = udp_receive_packet(sock_, &ack, sizeof(ack), &src_addr, REQUEST_TIMEOUT_SEC);
+                
+                if (m > 0) {
+                    packet_to_host(ack);
+
+                    if (ack.type != PKT_REQ_ACK) {
+                        cerr << "Invalid response type." << endl;
+                        continue;
+                    }
+
+                    if (ack.seqn >= req.seqn) {
+                        {
+                            lock_guard<mutex> lock(print_mtx_);
+                            print_queue_.push({sockaddr_to_ipstr(src_addr), ack.seqn, dest_ip, value, ack.body.ack.new_balance});
                         }
+                        print_cv_.notify_one();
+                        acked = true;
+                    } else {
+                        cerr << "Received unexpected ACK sequence number: " << ack.seqn << endl;
                     }
                 }
-            }
-            if (!acked) {
-                cerr << "Request timed out after retries for seq " << seqn << "";
+                
+                if (!acked) {
+                    cerr << "Request timed out, retrying for seq " << seqn << endl;
+                    this_thread::sleep_for(chrono::milliseconds(100)); // Shorter wait before retrying
+                }
             }
             seqn++;
         }
-        running_ = false;
     });
 }
 
+void Client::stop() {
+    running_ = false;
+}
+
 void Client::run() {
+    signal(SIGINT, signal_handler);
+
     start_discovery();
     discovery_thread_.join();
     if (!discovered_) return;
@@ -150,8 +173,12 @@ void Client::run() {
     start_interface();
     start_processing();
 
+    while (running_) {
+        this_thread::sleep_for(chrono::milliseconds(100));
+    }
+
+    cout << "Shutting down client..." << endl;
     processing_thread_.join();
-    running_ = false;
     print_cv_.notify_all();
     interface_thread_.join();
     close(sock_);

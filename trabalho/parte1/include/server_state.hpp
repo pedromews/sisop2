@@ -6,8 +6,6 @@
 #include <cstdint>
 #include <utility>
 
-using namespace std;
-
 struct ClientEntry {
     uint32_t address;
     uint32_t last_req;
