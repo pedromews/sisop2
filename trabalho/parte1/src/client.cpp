@@ -3,9 +3,14 @@
 #include "utils.hpp"
 #include <iostream>
 #include <sstream>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
+#endif
 #include <csignal>
 #include <atomic>
 #include <chrono>
