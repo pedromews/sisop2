@@ -1,7 +1,13 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#endif
 
 constexpr uint16_t PKT_DESC = 1;
 constexpr uint16_t PKT_DESC_ACK = 2;
