@@ -1,0 +1,47 @@
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ./build/server 4000
+    ports:
+      - "4000:4000/udp"
+    networks:
+      - pix-network
+
+  client1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    networks:
+      - pix-network
+    depends_on:
+      - server
+    tty: true
+    stdin_open: true
+
+  client2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    networks:
+      - pix-network
+    depends_on:
+      - server
+    tty: true
+    stdin_open: true
+
+  client3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    networks:
+      - pix-network
+    depends_on:
+      - server
+    tty: true
+    stdin_open: true
+
+networks:
+  pix-network:
+    driver: bridge

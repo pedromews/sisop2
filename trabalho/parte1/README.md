@@ -68,3 +68,70 @@ Um arquivo `.gitignore` foi adicionado ao projeto para evitar que arquivos de bu
 - `src/`: Arquivos fonte (.cpp)
 - `CMakeLists.txt`: Arquivo de configuração do CMake
 - `.gitignore`: Lista de arquivos e diretórios ignorados pelo Git
+- `Dockerfile`: Configuração para construir a imagem Docker
+- `docker-compose.yml`: Configuração para executar múltiplos containers Docker
+
+## Executando com Docker
+
+Para simular uma rede local com um servidor e múltiplos clientes usando Docker, siga estas etapas:
+
+1. Certifique-se de ter o Docker e o Docker Compose instalados em sua máquina.
+
+2. Na pasta do projeto (trabalho/parte1), execute o seguinte comando para construir e iniciar os containers:
+
+   ```
+   docker-compose -f docker/docker-compose.yml up --build
+   ```
+
+   Isso iniciará um servidor e três clientes em containers separados.
+
+3. Para interagir com os clientes, abra três terminais separados e execute os seguintes comandos em cada um:
+
+   Terminal 1 (client1):
+   ```
+   docker-compose -f docker/docker-compose.yml exec -it client1 /bin/bash
+   ```
+
+   Terminal 2 (client2):
+   ```
+   docker-compose -f docker/docker-compose.yml exec -it client2 /bin/bash
+   ```
+
+   Terminal 3 (client3):
+   ```
+   docker-compose -f docker/docker-compose.yml exec -it client3 /bin/bash
+   ```
+
+4. Em cada terminal de cliente, inicie o cliente:
+   ```
+   ./build/client 4000
+   ```
+
+5. Para enviar transações entre clientes ou para o servidor, use os seguintes formatos:
+   - Para enviar para o servidor: `server <valor>`
+   - Para enviar para outro cliente: `<IP_do_cliente> <valor>`
+
+   Exemplo:
+   ```
+   server 10
+   172.18.0.3 20
+   ```
+
+   Para obter os IPs dos clientes, você pode usar o comando `hostname -i` dentro do terminal de cada cliente.
+
+6. Para ver os logs do servidor:
+   ```
+   docker-compose -f docker/docker-compose.yml logs -f server
+   ```
+
+7. Para parar e remover os containers, use:
+   ```
+   docker-compose -f docker/docker-compose.yml down
+   ```
+
+Dicas para testar:
+- Use `hostname -i` em cada terminal de cliente para obter seu IP.
+- Anote os IPs dos clientes para usar nas transações entre eles.
+- Você pode enviar dinheiro do servidor para um cliente usando `server <valor>` e depois usar o IP desse cliente para enviar para outro.
+
+Nota: Os arquivos Docker (Dockerfile e docker-compose.yml) estão localizados na pasta 'docker' dentro do diretório do projeto.

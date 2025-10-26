@@ -131,6 +131,10 @@ void Client::start_processing() {
                 
                 if (m > 0) {
                     packet_to_host(ack);
+                    packet_to_host(req);
+
+                    cerr << "sent packet: " << req.seqn << " " << req.body.req.dest_addr << " " << req.body.req.value << endl;
+                    cerr << "receiv packet: " << ack.seqn << " " << ack.body.req.dest_addr << endl;
 
                     if (ack.type != PKT_REQ_ACK) {
                         cerr << "Invalid response type." << endl;
@@ -145,13 +149,13 @@ void Client::start_processing() {
                         print_cv_.notify_one();
                         acked = true;
                     } else {
-                        cerr << "Received unexpected ACK sequence number: " << ack.seqn << endl;
+                        cerr << "Received outdated ACK sequence number: " << ack.seqn << ", expected: " << req.seqn << endl;
                     }
                 }
                 
                 if (!acked) {
-                    cerr << "Request timed out, retrying for seq " << seqn << endl;
-                    this_thread::sleep_for(chrono::milliseconds(100)); // Shorter wait before retrying
+                    cerr << "Request timed out or received outdated ACK, retrying for seq " << req.seqn << endl;
+                    this_thread::sleep_for(chrono::milliseconds(100));
                 }
             }
             seqn++;
