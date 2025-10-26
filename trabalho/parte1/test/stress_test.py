@@ -8,7 +8,7 @@ def run_client(client_id, num_transactions):
     print(f"Starting client {client_id}")
     client_process = subprocess.Popen([
         'docker-compose',
-        '-f', 'trabalho/parte1/docker/docker-compose.yml',
+        '-f', 'docker/docker-compose.yml',
         'exec',
         '-T',
         f'client{client_id}',
@@ -23,35 +23,28 @@ def run_client(client_id, num_transactions):
             amount = random.randint(1, 100)
             transaction = f"{dest} {amount}\n"
             
-            try:
-                client_process.stdin.write(transaction)
-                client_process.stdin.flush()
-                transactions_sent += 1
-            except BrokenPipeError:
-                print(f"Client {client_id} process closed unexpectedly")
-                break
+            client_process.stdin.write(transaction)
+            client_process.stdin.flush()
+            transactions_sent += 1
 
-            time.sleep(0.01)
+            # Wait for the response from the server
+            response = client_process.stdout.readline().strip()
+            if not response:
+                print(f"Client {client_id} received no response for transaction {transactions_sent}")
+                break
+            print(f"Client {client_id} transaction {transactions_sent} response: {response}")
+
+            time.sleep(0.1)  # Increased delay between transactions
 
     except Exception as e:
         print(f"Error in client {client_id}: {str(e)}")
 
     finally:
         print(f"Client {client_id} sent {transactions_sent} transactions")
-        try:
-            client_process.stdin.close()
-        except:
-            pass
-        try:
-            output, errors = client_process.communicate(timeout=10)
-            print(f"Client {client_id} output:", output)
-            print(f"Client {client_id} errors:", errors)
-        except subprocess.TimeoutExpired:
-            print(f"Client {client_id} communication timed out")
-            client_process.kill()
-            output, errors = client_process.communicate()
-        except Exception as e:
-            print(f"Error communicating with client {client_id}: {str(e)}")
+        client_process.stdin.close()
+        output, errors = client_process.communicate(timeout=10)
+        print(f"Client {client_id} output:", output)
+        print(f"Client {client_id} errors:", errors)
 
 def stress_test(num_transactions_per_client):
     threads = []
@@ -63,22 +56,29 @@ def stress_test(num_transactions_per_client):
     for thread in threads:
         thread.join()
 
-def parse_server_logs():
-    server_logs = subprocess.run([
+def get_container_logs(container_name):
+    logs = subprocess.run([
         'docker-compose',
-        '-f', 'trabalho/parte1/docker/docker-compose.yml',
+        '-f', 'docker/docker-compose.yml',
         'logs',
-        'server'
+        container_name
     ], capture_output=True, text=True).stdout
+    return logs
+
+def parse_logs():
+    server_logs = get_container_logs('server')
+    client1_logs = get_container_logs('client1')
+    client2_logs = get_container_logs('client2')
+    client3_logs = get_container_logs('client3')
 
     dup_count = len(re.findall(r'DUP', server_logs))
     missing_count = len(re.findall(r'MISSING', server_logs))
     no_funds_count = len(re.findall(r'NO FUNDS', server_logs))
 
-    return dup_count, missing_count, no_funds_count
+    return server_logs, client1_logs, client2_logs, client3_logs, dup_count, missing_count, no_funds_count
 
 if __name__ == "__main__":
-    total_transactions = 100
+    total_transactions = 300
     transactions_per_client = total_transactions // 3
 
     start_time = time.time()
@@ -90,7 +90,21 @@ if __name__ == "__main__":
     print(f"Time taken: {end_time - start_time:.2f} seconds")
     print(f"Transactions per second: {total_transactions / (end_time - start_time):.2f}")
 
-    dup, missing, no_funds = parse_server_logs()
+    server_logs, client1_logs, client2_logs, client3_logs, dup, missing, no_funds = parse_logs()
+
+    print("\n=== Server Logs ===")
+    print(server_logs)
+
+    print("\n=== Client 1 Logs ===")
+    print(client1_logs)
+
+    print("\n=== Client 2 Logs ===")
+    print(client2_logs)
+
+    print("\n=== Client 3 Logs ===")
+    print(client3_logs)
+
+    print("\n=== Summary ===")
     print(f"DUP requests: {dup}")
     print(f"MISSING requests: {missing}")
     print(f"NO FUNDS requests: {no_funds}")

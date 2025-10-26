@@ -8,6 +8,11 @@ services:
       - "4000:4000/udp"
     networks:
       - pix-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   client1:
     build:
@@ -19,6 +24,11 @@ services:
       - server
     tty: true
     stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   client2:
     build:
@@ -30,6 +40,11 @@ services:
       - server
     tty: true
     stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   client3:
     build:
@@ -41,6 +56,11 @@ services:
       - server
     tty: true
     stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   pix-network:

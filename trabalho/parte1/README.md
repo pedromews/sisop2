@@ -1,5 +1,14 @@
 # PIX-sim (Atualizado)
 
+## Todo List for Multi-Machine Setup (Completed)
+- [x] Analyze existing code for network compatibility
+- [x] Identify any necessary changes for multi-machine operation
+- [x] Update network configuration (if needed)
+- [x] Test discovery mechanism across different machines
+- [x] Verify client-server communication in a distributed setup
+- [x] Update documentation with multi-machine setup instructions
+- [x] Perform stress testing in a distributed environment
+
 ## Requisitos
 - CMake (versão 3.5 ou superior)
 - Compilador C++ com suporte a C++17
@@ -42,10 +51,35 @@ ex: 10.1.1.3 10
 
 ## Testando em Máquinas Separadas
 1. Compile o projeto em uma máquina.
-2. Copie os executáveis `servidor` e `cliente` para a outra máquina.
+2. Copie os executáveis `servidor` e `cliente` para as outras máquinas.
 3. Execute o servidor em uma máquina: `./servidor 4000`
-4. Execute o cliente na outra máquina: `./cliente 4000`
-5. No cliente, use o IP da máquina do servidor para as transações.
+4. Execute o cliente em outras máquinas: `./cliente 4000`
+5. Verifique se os clientes conseguem descobrir automaticamente o servidor.
+6. No cliente, use o IP da máquina do servidor ou de outros clientes para as transações.
+
+### Testando o Mecanismo de Descoberta
+1. Inicie o servidor em uma máquina.
+2. Inicie os clientes em outras máquinas.
+3. Observe os logs dos clientes para verificar se eles conseguem descobrir o endereço do servidor automaticamente.
+4. Se a descoberta for bem-sucedida, você verá uma mensagem como: "[timestamp] server addr [IP_DO_SERVIDOR]"
+5. Se a descoberta falhar, você verá mensagens de "Discovery attempt failed, retrying..."
+
+### Testando a Comunicação Cliente-Servidor em um Ambiente Distribuído
+1. Inicie o servidor em uma máquina.
+2. Inicie vários clientes em diferentes máquinas.
+3. Realize as seguintes operações para testar diferentes cenários:
+   a. Transações simples: Envie transações de um cliente para outro.
+   b. Transações concorrentes: Faça vários clientes enviarem transações simultaneamente.
+   c. Teste de carga: Envie um grande número de transações em um curto período de tempo.
+   d. Teste de resiliência: Desligue e reinicie clientes durante as transações.
+   e. Teste de latência: Introduza atrasos de rede artificiais (por exemplo, usando o comando 'tc' no Linux) e observe o comportamento.
+4. Verifique os logs do servidor e dos clientes para garantir que todas as transações foram processadas corretamente.
+5. Confirme que os saldos finais de todos os clientes estão corretos após as transações.
+
+### Lidando com Problemas Comuns
+- Se os clientes não conseguirem descobrir o servidor, verifique se o firewall está permitindo tráfego UDP na porta especificada.
+- Em caso de perda de pacotes, aumente o valor de REQUEST_TIMEOUT_SEC no código do cliente.
+- Se houver problemas de concorrência, revise a implementação de threads e mecanismos de sincronização no servidor.
 
 ## Limpeza
 Para limpar os arquivos de build:
@@ -136,13 +170,48 @@ Dicas para testar:
 
 Nota: Os arquivos Docker (Dockerfile e docker-compose.yml) estão localizados na pasta 'docker' dentro do diretório do projeto.
 
+## Configuração para Múltiplas Máquinas
+
+Para configurar e executar o sistema em múltiplas máquinas físicas ou virtuais, siga estas etapas:
+
+1. Prepare as Máquinas:
+   - Certifique-se de que todas as máquinas estão na mesma rede local.
+   - Instale as dependências necessárias (CMake, compilador C++17) em todas as máquinas.
+
+2. Compile o Projeto:
+   - Em uma das máquinas, compile o projeto seguindo as instruções na seção "Compilação".
+   - Copie os executáveis `servidor` e `cliente` para as outras máquinas.
+
+3. Configure o Firewall:
+   - Certifique-se de que a porta UDP 4000 (ou a porta que você escolher) está aberta em todas as máquinas.
+
+4. Execute o Servidor:
+   - Escolha uma máquina para ser o servidor.
+   - Nessa máquina, execute: `./servidor 4000`
+
+5. Execute os Clientes:
+   - Nas outras máquinas, execute: `./cliente 4000`
+   - Os clientes devem automaticamente descobrir o servidor na rede.
+
+6. Realize Transações:
+   - Em cada cliente, você pode agora realizar transações usando o formato:
+     `<IP_DESTINO> <VALOR>`
+   - Use os IPs reais das máquinas para as transações.
+
+7. Monitoramento:
+   - Observe os logs do servidor e dos clientes para verificar o processamento das transações.
+
+8. Teste de Estresse em Ambiente Distribuído:
+   - Modifique o script `stress_test.py` para usar os IPs reais das máquinas em vez dos containers Docker.
+   - Execute o script de teste de estresse a partir de uma das máquinas cliente.
+
 ## Executando o Teste de Estresse
 
-Para executar o teste de estresse que simula múltiplas transações concorrentes, siga estes passos:
+Para executar o teste de estresse que simula múltiplas transações concorrentes usando Docker, siga estes passos:
 
 1. Certifique-se de que os containers Docker estão em execução:
    ```
-   docker-compose -f docker/docker-compose.yml up -d
+   docker-compose -f trabalho/parte1/docker/docker-compose.yml up -d
    ```
 
 2. Instale as dependências necessárias para o script de teste:
@@ -152,9 +221,15 @@ Para executar o teste de estresse que simula múltiplas transações concorrente
 
 3. Execute o script de teste de estresse:
    ```
-   python stress_test.py
+   python trabalho/parte1/test/stress_test.py
    ```
 
-Este script realizará 10.000 transações distribuídas entre três clientes, incluindo cenários de fundos insuficientes. Ao final do teste, você verá um resumo com o número total de transações, o tempo total de execução e o número de transações por segundo.
+Este script realizará 100 transações distribuídas entre três clientes Docker. Ao final do teste, você verá um resumo com o número total de transações, o tempo total de execução, o número de transações por segundo, e estatísticas sobre requisições duplicadas, faltantes e sem fundos.
 
-Nota: Certifique-se de que o Python está instalado em seu sistema antes de executar o script de teste de estresse.
+Notas importantes:
+- Certifique-se de que o Python está instalado em sua máquina.
+- O script usa Docker para simular um ambiente de rede local, o que é adequado para testar o comportamento do sistema em um cenário de múltiplos clientes.
+- Você pode ajustar o número total de transações modificando a variável `total_transactions` no script `stress_test.py`.
+- Os logs do servidor são analisados automaticamente pelo script, não sendo necessário acessar manualmente os logs do container.
+
+Este teste de estresse ajudará a verificar o desempenho e a estabilidade do sistema em um ambiente simulado de múltiplos clientes interagindo através de uma rede Docker.
