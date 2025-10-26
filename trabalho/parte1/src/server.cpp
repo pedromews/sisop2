@@ -3,12 +3,7 @@
 #include "discovery.hpp"
 #include "utils.hpp"
 #include <iostream>
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
 #include <arpa/inet.h>
-#endif
 
 using namespace std;
 
