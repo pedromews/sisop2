@@ -135,3 +135,26 @@ Dicas para testar:
 - Você pode enviar dinheiro do servidor para um cliente usando `server <valor>` e depois usar o IP desse cliente para enviar para outro.
 
 Nota: Os arquivos Docker (Dockerfile e docker-compose.yml) estão localizados na pasta 'docker' dentro do diretório do projeto.
+
+## Executando o Teste de Estresse
+
+Para executar o teste de estresse que simula múltiplas transações concorrentes, siga estes passos:
+
+1. Certifique-se de que os containers Docker estão em execução:
+   ```
+   docker-compose -f docker/docker-compose.yml up -d
+   ```
+
+2. Instale as dependências necessárias para o script de teste:
+   ```
+   pip install subprocess32
+   ```
+
+3. Execute o script de teste de estresse:
+   ```
+   python stress_test.py
+   ```
+
+Este script realizará 10.000 transações distribuídas entre três clientes, incluindo cenários de fundos insuficientes. Ao final do teste, você verá um resumo com o número total de transações, o tempo total de execução e o número de transações por segundo.
+
+Nota: Certifique-se de que o Python está instalado em seu sistema antes de executar o script de teste de estresse.
