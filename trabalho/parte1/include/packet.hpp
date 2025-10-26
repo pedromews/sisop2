@@ -17,6 +17,7 @@ struct request {
 struct request_ack {
     uint32_t seqn;
     uint32_t new_balance;
+    uint32_t error;
 };
 
 typedef struct packet {

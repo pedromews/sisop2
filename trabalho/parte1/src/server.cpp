@@ -54,7 +54,7 @@ void Server::start_interface() {
                 lock.unlock();
 
                 string status_str = (info.status != "OK")
-                                    ? (string(" ") + info.status + "! ")
+                                    ? (string(" ") + info.status + "!")
                                     : string();
 
                 cout << timestamp_now()
@@ -76,20 +76,43 @@ void Server::start_interface() {
 
 void Server::handle_request(packet_t p, sockaddr_in src) {
     uint32_t src_ip = ntohl(src.sin_addr.s_addr);
-    auto [processed, ack_seq, balance] = state_.process_req(src_ip, p.seqn, p.body.req.dest_addr, p.body.req.value);
+    auto [ack_seq, balance, error] = state_.process_req(src_ip, p.seqn, p.body.req.dest_addr, p.body.req.value);
+
+    cerr << "error = " << error << endl;
 
     packet_t ack{};
     ack.type = PKT_REQ_ACK;
     ack.seqn = ack_seq;
     ack.body.ack.seqn = ack_seq;
     ack.body.ack.new_balance = balance;
+    ack.body.ack.error = error;
     packet_to_network(ack);
     udp_send(sock_, &ack, sizeof(ack), &src);
 
     string client_ip = sockaddr_to_ipstr(src);
     in_addr dest_in; dest_in.s_addr = htonl(p.body.req.dest_addr);
     string dest_ip = inet_ntoa(dest_in);
-    string status = processed ? "OK" : (p.seqn <= ack_seq ? "DUP" : "MISSING");
+    string status;
+
+    switch (error) {
+        case ERR_CLIENT_NOT_FOUND:
+            status = "CLIENT NOT FOUND";
+            break;
+        case ERR_DUPLICATE_REQ:
+            status = "DUP";
+            break;
+        case ERR_MISSING_PREV_REQ:
+            status = "MISSING";
+            break;
+        case ERR_INSUFFICIENT_FUNDS:
+            status = "NO FUNDS";
+            break;
+        default:
+            status = "OK";
+            break;
+    }
+
+    cerr << "status = " << status << endl;
 
     auto stats = state_.get_stats();
     {

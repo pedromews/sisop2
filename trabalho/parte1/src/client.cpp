@@ -1,6 +1,7 @@
 #include "client.hpp"
 #include "udp_util.hpp"
 #include "utils.hpp"
+#include "server_state.hpp"
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
@@ -141,13 +142,17 @@ void Client::start_processing() {
                         continue;
                     }
 
+                    // Accept any ACK with seqn >= req.seqn
                     if (ack.seqn >= req.seqn) {
-                        {
+                        if (ack.body.ack.error == ERR_INSUFFICIENT_FUNDS) {
+                            cerr << "Insufficient funds for transaction." << endl;
+                            acked = true;
+                        } else {
                             lock_guard<mutex> lock(print_mtx_);
                             print_queue_.push({sockaddr_to_ipstr(src_addr), ack.seqn, dest_ip, value, ack.body.ack.new_balance});
+                            print_cv_.notify_one();
+                            acked = true;
                         }
-                        print_cv_.notify_one();
-                        acked = true;
                     } else {
                         cerr << "Received outdated ACK sequence number: " << ack.seqn << ", expected: " << req.seqn << endl;
                     }
@@ -155,7 +160,7 @@ void Client::start_processing() {
                 
                 if (!acked) {
                     cerr << "Request timed out or received outdated ACK, retrying for seq " << req.seqn << endl;
-                    this_thread::sleep_for(chrono::milliseconds(100));
+                    this_thread::sleep_for(chrono::milliseconds(100)); // Shorter wait before retrying
                 }
             }
             seqn++;
