@@ -1,7 +1,8 @@
 {
     "files.associations": {
         "chrono": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "unordered_map": "cpp"
     },
     "cmake.sourceDirectory": "/Users/i574521/ufrgs/semestre 2025 barra 2/sisop2/trabalho/parte1"
 }

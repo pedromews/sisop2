@@ -24,6 +24,7 @@ class Server {
         void start_discovery();
         void start_interface();
         void handle_request(packet_t p, sockaddr_in src);
+        void handle_exit(const sockaddr_in& src);
 
         int sock_;
         ServerState state_;

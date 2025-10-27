@@ -27,7 +27,6 @@ class Client {
         void start_discovery();
         void start_interface();
         void start_processing();
-        bool wait_for_socket(int fd, double timeout);
 
         int sock_;
         uint16_t port_;

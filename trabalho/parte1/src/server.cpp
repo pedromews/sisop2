@@ -29,11 +29,38 @@ void Server::run() {
         if (p.type == PKT_REQ) {
             thread worker(&Server::handle_request, this, p, src);
             worker.detach();
+        } else if (p.type == PKT_EXIT) {
+            handle_exit(src);
         }
     }
 
     discovery_thread_.join();
     interface_thread_.join();
+}
+
+void Server::handle_exit(const sockaddr_in& src) {
+    uint32_t client_ip = ntohl(src.sin_addr.s_addr);
+    string client_ip_str = sockaddr_to_ipstr(src);
+
+    try {
+        state_.remove_client(client_ip);
+        //cout << timestamp_now() << " Client " << client_ip_str << " has exited." << endl;
+        
+        auto stats = state_.get_stats();
+        // cout << "Updated stats - num_transactions: " << stats.num_transactions
+        //      << ", total_transferred: " << stats.total_transferred
+        //      << ", total_balance: " << stats.total_balance << endl;
+    } catch (const std::exception& e) {
+        //cerr << timestamp_now() << " Error handling exit for client " << client_ip_str 
+        //     << ": " << e.what() << endl;
+    }
+
+    // Send EXIT_ACK to client
+    packet_t ack{};
+    ack.type = PKT_EXIT_ACK;
+    ack.seqn = 0;
+    packet_to_network(ack);
+    udp_send(sock_, &ack, sizeof(ack), &src);
 }
 
 void Server::start_discovery() {
@@ -53,6 +80,9 @@ void Server::start_interface() {
                 print_queue_.pop();
                 lock.unlock();
 
+                if (info.status != "OK" && info.status != "DUP")
+                    continue;
+
                 string status_str = (info.status != "OK")
                                     ? (string(" ") + info.status + "!")
                                     : string();
@@ -62,9 +92,8 @@ void Server::start_interface() {
                      << status_str
                      << " id_req " << info.seqn
                      << " dest " << info.dest_ip
-                     << " value " << info.value << endl;
-
-                cout << "num_transactions " << info.stats.num_transactions
+                     << " value " << info.value
+                     << " num_transactions " << info.stats.num_transactions
                      << " total_transferred " << info.stats.total_transferred
                      << " total_balance " << info.stats.total_balance << endl;
 
@@ -78,7 +107,7 @@ void Server::handle_request(packet_t p, sockaddr_in src) {
     uint32_t src_ip = ntohl(src.sin_addr.s_addr);
     auto [ack_seq, balance, error] = state_.process_req(src_ip, p.seqn, p.body.req.dest_addr, p.body.req.value);
 
-    cerr << "error = " << error << endl;
+    //cerr << "error = " << error << endl;
 
     packet_t ack{};
     ack.type = PKT_REQ_ACK;
@@ -112,7 +141,7 @@ void Server::handle_request(packet_t p, sockaddr_in src) {
             break;
     }
 
-    cerr << "status = " << status << endl;
+    //cerr << "status = " << status << endl;
 
     auto stats = state_.get_stats();
     {

@@ -12,7 +12,7 @@ void ServerState::add_client(uint32_t ip) {
         ClientEntry e{ip, 0, registration_balance_};
         clients_[ip] = e;
 
-        cerr << "add client " << ip << endl;
+        //cerr << "add client " << ip << endl;
         
         lock.unlock();
         lock_guard s(stats_mtx_);
@@ -30,10 +30,10 @@ tuple<uint32_t,uint32_t,uint32_t> ServerState::process_req(uint32_t src_ip, uint
     
     auto it = clients_.find(src_ip);
     if (it == clients_.end()) {
-        cerr << "couldnt find" << endl;
+        //cerr << "couldnt find" << endl;
         return {0, 0, ERR_CLIENT_NOT_FOUND};
     }
-    cerr << "found" << endl;
+    //cerr << "found" << endl;
     
     uint32_t last = it->second.last_req;
     uint32_t bal = it->second.balance;
@@ -55,15 +55,13 @@ tuple<uint32_t,uint32_t,uint32_t> ServerState::process_req(uint32_t src_ip, uint
         return {seqn, it->second.balance, ERR_INSUFFICIENT_FUNDS};
     }
     
-    it->second.balance -= value;
     it->second.last_req = seqn;
     
     auto it_dest = clients_.find(dest_ip);
-    if (it_dest == clients_.end()) {
-        clients_[dest_ip] = {dest_ip, 0, 0};
-        it_dest = clients_.find(dest_ip);
+    if (it_dest != clients_.end()) {
+        it->second.balance -= value;
+        it_dest->second.balance += value;
     }
-    it_dest->second.balance += value;
     
     {
         lock_guard g(stats_mtx_);
@@ -77,4 +75,17 @@ tuple<uint32_t,uint32_t,uint32_t> ServerState::process_req(uint32_t src_ip, uint
 ServerStats ServerState::get_stats() {
     lock_guard g(stats_mtx_);
     return stats_;
+}
+
+void ServerState::remove_client(uint32_t ip) {
+    unique_lock lock(clients_mtx_);
+    auto it = clients_.find(ip);
+    if (it != clients_.end()) {
+        uint32_t client_balance = it->second.balance;
+        clients_.erase(it);
+        lock.unlock();
+
+        lock_guard g(stats_mtx_);
+        stats_.total_balance -= client_balance;
+    }
 }

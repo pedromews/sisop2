@@ -7,6 +7,8 @@ constexpr uint16_t PKT_DESC = 1;
 constexpr uint16_t PKT_DESC_ACK = 2;
 constexpr uint16_t PKT_REQ = 3;
 constexpr uint16_t PKT_REQ_ACK = 4;
+constexpr uint16_t PKT_EXIT = 5;
+constexpr uint16_t PKT_EXIT_ACK = 6;
 
 #pragma pack(push,1)
 struct request {
