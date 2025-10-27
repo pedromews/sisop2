@@ -57,13 +57,13 @@ void Client::start_discovery() {
             }
 
             if (!discovered_) {
-                //cerr << "Discovery attempt failed, retrying..." << endl;
+                cerr << "Discovery attempt failed, retrying..." << endl;
                 this_thread::sleep_for(chrono::seconds(1)); // Wait before retrying
             }
         }
 
         if (!discovered_) {
-            //cerr << "Discovery process terminated without finding a server." << endl;
+            cerr << "Discovery process terminated without finding a server." << endl;
             running_ = false;
         }
     });
