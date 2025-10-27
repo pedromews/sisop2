@@ -120,10 +120,10 @@ void Client::start_processing() {
             in_addr_t addr = inet_addr(dest_ip.c_str());
             req.body.req.dest_addr = ntohl(addr);
             req.body.req.value = value;
-            packet_to_network(req);
-
+            
             bool acked = false;
             while (!acked && running_) {
+                packet_to_network(req);
                 udp_send(sock_, &req, sizeof(req), &server_addr_);
 
                 packet_t ack{};

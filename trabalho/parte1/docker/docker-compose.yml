@@ -22,6 +22,8 @@ services:
       - pix-network
     depends_on:
       - server
+    volumes:
+      - ./test:/app/test
     tty: true
     stdin_open: true
     logging:
@@ -38,6 +40,8 @@ services:
       - pix-network
     depends_on:
       - server
+    volumes:
+      - ./test:/app/test
     tty: true
     stdin_open: true
     logging:
@@ -54,6 +58,8 @@ services:
       - pix-network
     depends_on:
       - server
+    volumes:
+      - ./test:/app/test
     tty: true
     stdin_open: true
     logging:
