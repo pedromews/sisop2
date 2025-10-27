@@ -10,13 +10,15 @@ using namespace std;
 int create_udp_server_socket(uint16_t port) {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     
-    if (sock < 0) throw runtime_error("socket() failed");
+    if (sock < 0) {
+        throw runtime_error("socket() failed: " + string(strerror(errno)));
+    }
     
     int yes = 1;
     
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
         close(sock);
-        throw runtime_error("setsockopt failed");
+        throw runtime_error("setsockopt failed: " + string(strerror(errno)));
     }
     
     sockaddr_in addr{};
@@ -26,7 +28,13 @@ int create_udp_server_socket(uint16_t port) {
     
     if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
         close(sock);
-        throw runtime_error("bind() failed");
+        if (errno == EADDRINUSE) {
+            throw runtime_error("bind() failed: Address already in use. Please check if the port " + to_string(port) + " is already occupied.");
+        } else if (errno == EACCES) {
+            throw runtime_error("bind() failed: Permission denied. You might need root privileges to bind to port " + to_string(port) + ".");
+        } else {
+            throw runtime_error("bind() failed: " + string(strerror(errno)));
+        }
     }
     
     return sock;

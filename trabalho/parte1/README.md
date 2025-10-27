@@ -18,13 +18,17 @@ make
 ## Execução
 ### Servidor
 ```bash
-./server 4000
+./server 4001
 ```
+
+Nota: Se a porta 4000 estiver em uso, use uma porta alternativa como 4001.
 
 ### Cliente
 ```bash
-./client 4000
+./client 4001
 ```
+
+Nota: Certifique-se de que o cliente use a mesma porta que o servidor.
 
 Comandos (stdin):
 ```
@@ -35,8 +39,8 @@ ex: 10.1.1.3 10
 ## Testando em Máquinas Separadas
 1. Compile o projeto em uma máquina.
 2. Copie os executáveis `server` e `client` para as outras máquinas.
-3. Execute o servidor em uma máquina: `./server 4000`
-4. Execute o cliente em outras máquinas: `./client 4000`
+3. Execute o servidor em uma máquina: `./server 4001` (ou outra porta disponível)
+4. Execute o cliente em outras máquinas: `./client 4001` (use a mesma porta do servidor)
 5. Verifique se os clientes conseguem descobrir automaticamente o servidor.
 6. No cliente, use o IP da máquina do servidor ou de outros clientes para as transações.
 

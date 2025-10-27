@@ -11,9 +11,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    uint16_t port = static_cast<uint16_t>(std::stoi(argv[1]));
-    Server server(port, REGISTRATION_BALANCE);
-    server.run();
+    try {
+        uint16_t port = static_cast<uint16_t>(std::stoi(argv[1]));
+        Server server(port, REGISTRATION_BALANCE);
+        server.run();
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
 
     return 0;
 }
