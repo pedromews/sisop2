@@ -3,7 +3,7 @@
 
 using namespace std;
 
-#define REGISTRATION_BALANCE 100
+#define REGISTRATION_BALANCE 10000
 
 int main(int argc, char** argv) {
     if (argc != 2) {
