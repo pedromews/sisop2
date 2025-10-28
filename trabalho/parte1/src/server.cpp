@@ -44,7 +44,7 @@ void Server::handle_exit(const sockaddr_in& src) {
 
     try {
         state_.remove_client(client_ip);
-        //cout << timestamp_now() << " Client " << client_ip_str << " has exited." << endl;
+        cout << timestamp_now() << " Client " << client_ip_str << " has exited." << endl;
         
         auto stats = state_.get_stats();
         // cout << "Updated stats - num_transactions: " << stats.num_transactions

@@ -10,6 +10,8 @@
 #include <csignal>
 #include <atomic>
 #include <chrono>
+#include <fstream>
+#include <queue>
 
 using namespace std;
 
@@ -96,15 +98,38 @@ void Client::start_interface() {
 void Client::start_processing() {
     processing_thread_ = thread([this]() {
         uint32_t seqn = 1;
+        queue<string> request_queue;
 
         while (running_) {
             string line;
-            if (!getline(cin, line)) {
+            if (request_queue.empty()) {
+                if (!getline(cin, line)) {
                 //cout << "EOF detected." << endl;
-                stop();
-                break;
+                    stop();
+                    break;
+                }
+                if (line.empty()) continue;
+
+                if (line.substr(0, 9) == "input.txt") {
+                    string filepath = line.substr(0, 9);
+                    ifstream file(filepath);
+                    if (file.is_open()) {
+                        string file_line;
+                        while (getline(file, file_line)) {
+                            request_queue.push(file_line);
+                        }
+                        file.close();
+                        //cout << "Loaded " << request_queue.size() << " requests from file." << endl;
+                        continue;
+                    } else {
+                        //cerr << "Failed to open file: " << filepath << endl;
+                        continue;
+                    }
+                }
+            } else {
+                line = request_queue.front();
+                request_queue.pop();
             }
-            if (line.empty()) continue;
 
             istringstream iss(line);
             string dest_ip; uint32_t value;
@@ -184,15 +209,15 @@ void Client::stop() {
             packet_to_host(ack);
             if (ack.type == PKT_EXIT_ACK) {
                 acked = true;
-                //cout << "Received EXIT_ACK from server." << endl;
+                cout << "Received EXIT_ACK from server." << endl;
             }
         }
         if (!acked) {
-            //cerr << "Waiting for EXIT_ACK from server..." << endl;
+            cerr << "Waiting for EXIT_ACK from server..." << endl;
         }
     }
     if (!acked) {
-        //cerr << "Did not receive EXIT_ACK from server. Forcing shutdown." << endl;
+        cerr << "Did not receive EXIT_ACK from server. Forcing shutdown." << endl;
     }
 }
 
