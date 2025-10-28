@@ -60,7 +60,7 @@ void Client::start_discovery() {
 
             if (!discovered_) {
                 cerr << "Discovery attempt failed, retrying..." << endl;
-                this_thread::sleep_for(chrono::seconds(1)); // Wait before retrying
+                this_thread::sleep_for(chrono::milliseconds(50)); // Wait before retrying
             }
         }
 
