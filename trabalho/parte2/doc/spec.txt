@@ -1,0 +1,26 @@
+1 Especificação do Trabalho Prático:
+
+A proposta de trabalho prático é implementar um serviço distribuído de transferência de valores entre clientes, simulando um sistema de pagamento similar ao PIX. O objetivo do serviço é receber requisições de clientes diversos contendo um valor a ser transferido para outro cliente, processar cada requisição, atualizar os saldos dos clientes envolvidos e o saldo total do banco, e manter um histórico das transações. Cada requisição conterá um valor inteiro positivo, que será lido pelo cliente a partir da entrada padrão. O servidor deverá processar as transações de forma concorrente/paralela, usando threads (uma thread para processar cada requisição recebida).
+
+A proposta deverá ser desenvolvida em duas etapas. A primeira etapa compreendeu funcionalidades implementadas usando conceitos como threads, processos, comunicação e sincronização. Na segunda etapa, a equipe deverá estender o serviço com algumas funcionalidades avançadas, onde destaca-se: esquema de replicação com eleição de líder. A aplicação deverá executar em ambientes Unix (Linux), mesmo que tenha sido desenvolvida em outras plataformas. O projeto deverá ser implementar em C/C++, usando a API User Datagram Protocol (UDP) sockets do Unix.
+
+O principal critério de avaliação será a correta atualização dos saldos dos clientes e a consistência do histórico de transações, garantindo que o valor total do sistema permaneça constante. Um critério secundário de avaliação será o tempo de resposta para o servidor receber, processar e responder um grande volume de requisições (10.000+ transações) recebidas de clientes diversos.
+
+2 Funcionalidades Avançadas:
+
+Na segunda parte deste projeto, a aplicação deverá ser estendida para atender os conceitos estudados na segunda metade da disciplina: replicação e eleição de líder.
+
+2.1 Replicação Passiva: 
+
+A estação servidora, caso venha a falhar, levará à indisponibilidade do serviço distribuído de transferência de valores. Este é um estado que não é desejável no serviço. Para aumentar a disponibilidade do serviço na ocorrência de falhas da estação servidora, uma nova estação servidora deverá assumir o seu papel e manter o serviço operacional. Note que essa mudança deve ser transparente para os participantes, os quais devem ser notificados de qual a nova estação servidora. Para garantir que os saldos dos clientes e o histórico de transações continuarão consistentes, você deverá utilizar um esquema de replicação, informando todas as modificações realizadas aos servidores secundários. Mais especificamente, você deverá implementar um esquema de Replicação Passiva, onde o servidor é representado por uma instância primária de replica manager (RM), e uma ou mais instâncias de RM secundárias (ou backup).
+
+Seu esquema precisará garantir que:
+1. Todos os clientes sempre utilizarão a mesma cópia primária (RM primário);
+2. Após cada operação de transferência, o RM primário irá propagar o estado atualizado dos saldos e o histórico de transações aos RMs de backup;
+3. A conservação do valor total do sistema seja mantida em todas as réplicas.
+
+2.2 Eleição de Líder:
+
+Algoritmos de eleição de líder permitem escolher, dentro de um conjunto de processos distribuídos, qual processo deve desempenhar um papel particular (e.g., coordenador, alocador de recursos, verificador, etc.). Algoritmos de eleição de líder são muito usados como parte de outros algoritmos distribuídos, que exigem a escolha de um processo para desempenhar um papel específico. Na primeira parte do trabalho, assumiu-se a existência de uma única estação servidora. Agora, no entanto, como diferentes servidores potencialmente poderão assumir o papel de manager, o processo escolhido em questão deverá ser selecionado através do algoritmo de eleição de líder valentão.
+
+Quando a estação servidora principal falhar, o algoritmo de eleição de líder deverá ser utilizado para determinar o próximo manager. Nesse caso, um dos servidores secundários deverá assumir essa função, mantendo um estado consistente do sistema. Para isso, implemente o algoritmo do valentão para eleger um novo RM primário após uma falha. Lembre-se de garantir que seu mecanismo atualize as informações sobre o novo líder nos clientes, permitindo que continuem a enviar requisições de transferência sem interrupção prolongada do serviço. A comunicação entre servidores e réplicas pode ser realizada tanto via unicast quanto multicast.
