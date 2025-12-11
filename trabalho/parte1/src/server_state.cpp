@@ -8,17 +8,15 @@ ServerState::ServerState(uint32_t registration_balance) : registration_balance_(
 void ServerState::add_client(uint32_t ip) {
     unique_lock lock(clients_mtx_);
     
-    if (clients_.count(ip) == 0) {
-        ClientEntry e{ip, 0, registration_balance_};
-        clients_[ip] = e;
-
-        //cerr << "add client " << ip << endl;
-        
-        lock.unlock();
-        lock_guard s(stats_mtx_);
-        
-        stats_.total_balance += registration_balance_;
-    }
+    // add client even if it already exists (to handle cases where the client quits and then re-enters)
+    //cerr << "add client " << ip << endl;
+    ClientEntry e{ip, 0, registration_balance_};
+    clients_[ip] = e;
+    
+    lock.unlock();
+    lock_guard s(stats_mtx_);
+    
+    stats_.total_balance += registration_balance_;
 }
 
 // Method behavior:
