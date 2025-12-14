@@ -1,0 +1,61 @@
+INSTRUÇÕES DE COMPILAÇÃO E EXECUÇÃO
+Este documento descreve como compilar e executar o sistema de pagamentos distribuído em um ambiente com múltiplas máquinas Linux/macOS.
+
+PRÉ-REQUISITOS
+--------------
+Certifique-se de ter instalado:
+- Compilador C++ (g++ ou clang) com suporte a C++17
+- CMake (versão 3.10 ou superior)
+- Make
+
+COMPILAÇÃO
+----------
+1. Abra um terminal na raiz do projeto (pasta parte2).
+2. Crie um diretório para a compilação e acesse-o:
+   $ mkdir build
+   $ cd build
+
+3. Gere os arquivos de construção com o CMake:
+   $ cmake ..
+
+4. Compile o projeto:
+   $ make
+
+   Isso gerará os executáveis 'server' e 'client' dentro do diretório 'build'.
+
+EXECUÇÃO
+--------
+
+O sistema é composto por múltiplos servidores (para replicação e tolerância a falhas) e clientes.
+
+1. Configuração dos Servidores
+
+Cada servidor deve ser iniciado com sua porta de escuta, seu ID único, e a lista de todos os outros servidores (pares) que compõem o cluster.
+O formato do comando é:
+   $ ./server <PORTA_LOCAL> <ID_LOCAL> <ID_PAR_1> <IP_PAR_1> <PORTA_PAR_1> <ID_PAR_2> <IP_PAR_2> <PORTA_PAR_2> ...
+
+Exemplo de cenário com 3 máquinas:
+- Máquina A (IP 192.168.1.10): Será o Servidor 1 (ID 10)
+- Máquina B (IP 192.168.1.20): Será o Servidor 2 (ID 20)
+- Máquina C (IP 192.168.1.30): Será o Servidor 3 (ID 30)
+
+Comandos para executar em cada máquina (dentro da pasta build):
+
+[Máquina A] $ ./server 4000 10 20 192.168.1.20 4000 30 192.168.1.30 4000
+[Máquina B] $ ./server 4000 20 10 192.168.1.10 4000 30 192.168.1.30 4000
+[Máquina C] $ ./server 4000 30 10 192.168.1.10 4000 20 192.168.1.20 4000
+
+Nota: É fundamental que todos os servidores conheçam todos os outros pares para que a eleição de líder e a replicação funcionem corretamente.
+
+2. Execução dos Clientes
+
+O cliente utiliza broadcast UDP para descobrir o servidor líder na rede local.
+Para executar um cliente:
+   $ ./client <PORTA_UDP_SERVIDOR>
+
+Exemplo:
+   $ ./client 4000
+
+Após iniciar, o cliente exibirá o endereço do servidor encontrado.
+Para realizar transações, digite no terminal do cliente: <IP_DESTINO> <VALOR>
+Exemplo: 192.168.1.50 10
