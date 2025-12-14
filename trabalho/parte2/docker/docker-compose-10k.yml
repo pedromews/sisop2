@@ -1,0 +1,87 @@
+services:
+  server1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: server1
+    # ID 10. Peers: server2 (ID 20), server3 (ID 30)
+    command: ./build/server 4000 10 20 172.25.0.20 4000 30 172.25.0.30 4000 40 172.25.0.40 4000
+    networks:
+      sisop-net:
+        ipv4_address: 172.25.0.10
+    tty: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  server2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: server2
+    depends_on:
+      - server1
+    # ID 20. Peers: server1 (ID 10), server3 (ID 30)
+    command: ./build/server 4000 20 10 172.25.0.10 4000 30 172.25.0.30 4000 40 172.25.0.40 4000
+    networks:
+      sisop-net:
+        ipv4_address: 172.25.0.20
+    tty: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  client1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: client1
+    depends_on:
+      - server1
+      - server2
+    networks:
+      sisop-net:
+        ipv4_address: 172.25.0.50
+    volumes:
+      - ../test/client1-input.txt:/app/input.txt
+    command: /bin/bash -c "echo input.txt | ./build/client 4000"
+    tty: true
+    stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  client2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: client2
+    depends_on:
+      - server1
+      - server2
+    networks:
+      sisop-net:
+        ipv4_address: 172.25.0.51
+    volumes:
+      - ../test/client2-input.txt:/app/input.txt
+    command: /bin/bash -c "echo input.txt | ./build/client 4000"
+    tty: true
+    stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  sisop-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
