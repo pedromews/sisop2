@@ -1,10 +1,15 @@
 #pragma once
 #include "server_state.hpp"
 #include "packet.hpp"
+#include "peer.hpp"
+#include "replica_manager.hpp"
+#include "election.hpp"
 #include <thread>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <vector>
+#include <atomic>
 
 struct PrintInfo {
     std::string client_ip;
@@ -17,18 +22,28 @@ struct PrintInfo {
 
 class Server {
     public:
-        Server(uint16_t port, uint32_t registration_balance);
+        Server(uint16_t port, uint32_t id, std::vector<Peer> peers, uint32_t registration_balance);
         void run();
 
     private:
-        void start_discovery();
         void start_interface();
         void handle_request(packet_t p, sockaddr_in src);
         void handle_exit(const sockaddr_in& src);
-
+        void process_packet(packet_t p, sockaddr_in src);
+        
+        // Part 2 delegation
+        void handle_coordinator(packet_t p, sockaddr_in src);
+        void become_primary();
+        void notify_clients_leader_change();
+        
         int sock_;
+        uint32_t id_;
+        std::vector<Peer> peers_;
+        
         ServerState state_;
-        std::thread discovery_thread_;
+        ReplicaManager replica_manager_;
+        Election election_;
+        
         std::thread interface_thread_;
 
         std::mutex print_mtx_;

@@ -1,7 +1,7 @@
-#include "client.hpp"
-#include "udp_util.hpp"
-#include "utils.hpp"
-#include "server_state.hpp"
+#include "../include/client.hpp"
+#include "../include/udp_util.hpp"
+#include "../include/utils.hpp"
+#include "../include/server_state.hpp"
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
@@ -31,44 +31,41 @@ Client::Client(uint16_t port) : port_(port), running_(true) {
     server_len_ = sizeof(server_addr_);
 }
 
-void Client::start_discovery() {
-    discovery_thread_ = thread([this]() {
-        packet_t p{};
-        p.type = PKT_DESC;
-        p.seqn = 0;
-        packet_to_network(p);
+void Client::find_server() {
+    packet_t p{};
+    p.type = PKT_DESC;
+    p.seqn = 0;
+    packet_to_network(p);
 
-        sockaddr_in bcast{};
-        bcast.sin_family = AF_INET;
-        bcast.sin_port = htons(port_);
-        bcast.sin_addr.s_addr = INADDR_BROADCAST;
+    sockaddr_in bcast{};
+    bcast.sin_family = AF_INET;
+    bcast.sin_port = htons(port_);
+    bcast.sin_addr.s_addr = INADDR_BROADCAST;
 
-        while (!discovered_ && running_) {
-            udp_send(sock_, &p, sizeof(p), &bcast);
+    discovered_ = false;
 
-            packet_t r{};
-            ssize_t n = udp_receive_packet(sock_, &r, sizeof(r), &server_addr_, DISCOVERY_TIMEOUT_SEC);
-            
-            if (n > 0) {
-                packet_to_host(r);
-                if (r.type == PKT_DESC_ACK) {
-                    cout << timestamp_now() << " server_addr " << sockaddr_to_ipstr(server_addr_) << endl;
-                    discovered_ = true;
-                    break;
-                }
-            }
+    while (!discovered_ && running_) {
+        udp_send(sock_, &p, sizeof(p), &bcast);
 
-            if (!discovered_) {
-                cerr << "Discovery attempt failed, retrying..." << endl;
-                this_thread::sleep_for(chrono::milliseconds(50)); // Wait before retrying
+        packet_t r{};
+        sockaddr_in sender{};
+        ssize_t n = udp_receive_packet(sock_, &r, sizeof(r), &sender, DISCOVERY_TIMEOUT_SEC);
+        
+        if (n > 0) {
+            packet_to_host(r);
+            if (r.type == PKT_DESC_ACK) {
+                server_addr_ = sender;
+                cout << timestamp_now() << " server_addr " << sockaddr_to_ipstr(server_addr_) << endl;
+                discovered_ = true;
+                break;
             }
         }
 
         if (!discovered_) {
-            cerr << "Discovery process terminated without finding a server." << endl;
-            running_ = false;
+            // cerr << "Discovery attempt failed, retrying..." << endl;
+            this_thread::sleep_for(chrono::milliseconds(100));
         }
-    });
+    }
 }
 
 void Client::start_interface() {
@@ -141,8 +138,20 @@ void Client::start_processing() {
             in_addr_t addr = inet_addr(dest_ip.c_str());
             req.body.req.dest_addr = ntohl(addr);
             req.body.req.value = value;
+
+            // Check for leader change packets buffered while we were blocked on input
+            packet_t p_check{};
+            sockaddr_in src_check{};
+            while (udp_receive_packet(sock_, &p_check, sizeof(p_check), &src_check, 0.001) > 0) {
+                packet_to_host(p_check);
+                if (p_check.type == PKT_LEADER_CHANGE) {
+                    server_addr_ = src_check;
+                    cout << timestamp_now() << " Leader changed to " << sockaddr_to_ipstr(server_addr_) << endl;
+                }
+            }
             
             bool acked = false;
+            int retry_count = 0;
             while (!acked && running_) {
                 packet_to_network(req);
                 udp_send(sock_, &req, sizeof(req), &server_addr_);
@@ -159,6 +168,13 @@ void Client::start_processing() {
 
                     //cerr << "sent packet: " << req.seqn << " " << req.body.req.dest_addr << " " << req.body.req.value << endl;
                     //cerr << "receiv packet: " << ack.seqn << " " << ack.body.req.dest_addr << endl;
+
+                    if (ack.type == PKT_LEADER_CHANGE) {
+                        server_addr_ = src_addr;
+                        cout << timestamp_now() << " Leader changed to " << sockaddr_to_ipstr(server_addr_) << endl;
+                        // Continue loop to resend request to new leader
+                        continue;
+                    }
 
                     if (ack.type != PKT_REQ_ACK) {
                         //cerr << "Invalid response type." << endl;
@@ -183,8 +199,15 @@ void Client::start_processing() {
                 }
                 
                 if (!acked) {
-                    //cerr << "Request timed out or received outdated ACK, retrying for seq " << req.seqn << endl;
-                    this_thread::sleep_for(chrono::milliseconds(100)); // Shorter wait before retrying
+                    retry_count++;
+                    if (retry_count > 3) {
+                        //cerr << timestamp_now() << " Server unreachable. Rediscovering..." << endl;
+                        find_server(); // Blocking call to find new leader
+                        retry_count = 0;
+                        // Loop continues, resending the same request to the new server_addr_
+                    } else {
+                        this_thread::sleep_for(chrono::milliseconds(100));
+                    }
                 }
             }
             seqn++;
@@ -224,8 +247,7 @@ void Client::stop() {
 void Client::run() {
     signal(SIGINT, signal_handler);
 
-    start_discovery();
-    discovery_thread_.join();
+    find_server();
     if (!discovered_) return;
 
     start_interface();

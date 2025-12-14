@@ -1,40 +1,69 @@
-#include "server.hpp"
-#include "udp_util.hpp"
-#include "discovery.hpp"
-#include "utils.hpp"
+#include "../include/server.hpp"
+#include "../include/udp_util.hpp"
+#include "../include/discovery.hpp"
+#include "../include/utils.hpp"
 #include <iostream>
 #include <arpa/inet.h>
+#include <chrono>
 
 using namespace std;
 
-Server::Server(uint16_t port, uint32_t registration_balance)
-    : sock_(create_udp_server_socket(port)), state_(registration_balance) {
+Server::Server(uint16_t port, uint32_t id, std::vector<Peer> peers, uint32_t registration_balance)
+    : sock_(create_udp_server_socket(port)), id_(id), peers_(peers), state_(registration_balance),
+      replica_manager_(id, peers, sock_, state_), election_(id, peers, sock_) {
     cout << timestamp_now()
         << " num_transactions 0 total_transferred 0 total_balance 0" << endl;
 }
 
 void Server::run() {
-    start_discovery();
     start_interface();
 
+    // Bully Algorithm: Start election immediately upon recovery/startup
+    //cout << timestamp_now() << " [Server] Starting up. Initiating election." << endl;
+    if (election_.start_election()) become_primary();
+
+    auto last_hb_sent = std::chrono::steady_clock::now();
+
     while (true) {
+        // Periodic tasks
+        auto now = std::chrono::steady_clock::now();
+        
+        if (replica_manager_.is_primary()) {
+            // Send heartbeats every 1s
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb_sent).count() > 1000) {
+                replica_manager_.send_heartbeats();
+                last_hb_sent = now;
+            }
+        } else {
+            // Check for leader failure
+            if (replica_manager_.check_heartbeat_timeout() && !election_.is_in_progress()) {
+                //cout << timestamp_now() << " Leader timeout. Starting election." << endl;
+                if (election_.start_election()) become_primary();
+            }
+        }
+        
+        if (election_.check_timeout()) {
+            if (!election_.higher_responded()) {
+                //cout << timestamp_now() << " Election timed out (no higher response). I am Coordinator." << endl;
+                become_primary();
+            } else {
+                //cout << timestamp_now() << " Election timed out (higher node failed). Restarting." << endl;
+                if (election_.start_election()) become_primary();
+            }
+        }
+
         sockaddr_in src{};
         packet_t p{};
-        ssize_t n = udp_receive(sock_, &p, sizeof(p), &src);
+        // Use timeout (100ms) to allow periodic checks
+        ssize_t n = udp_receive_packet(sock_, &p, sizeof(p), &src, 0.1);
         
         if (n <= 0) continue;
 
         packet_to_host(p);
 
-        if (p.type == PKT_REQ) {
-            thread worker(&Server::handle_request, this, p, src);
-            worker.detach();
-        } else if (p.type == PKT_EXIT) {
-            handle_exit(src);
-        }
+        process_packet(p, src);
     }
 
-    discovery_thread_.join();
     interface_thread_.join();
 }
 
@@ -63,10 +92,78 @@ void Server::handle_exit(const sockaddr_in& src) {
     udp_send(sock_, &ack, sizeof(ack), &src);
 }
 
-void Server::start_discovery() {
-    discovery_thread_ = thread([this]() {
-        discovery_server_loop(sock_, state_, 100);
-    });
+void Server::process_packet(packet_t p, sockaddr_in src) {
+    switch (p.type) {
+        case PKT_DESC:
+            if (replica_manager_.is_primary()) {
+                handle_discovery_request(sock_, state_, src);
+            }
+            break;
+        case PKT_REQ:
+            if (replica_manager_.is_primary()) {
+                //cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << ". Processing." << endl;
+                thread worker(&Server::handle_request, this, p, src);
+                worker.detach();
+            } else {
+                //cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << " but I am BACKUP. Ignoring." << endl;
+            }
+            break;
+        case PKT_EXIT:
+            handle_exit(src);
+            break;
+        case PKT_HEARTBEAT:
+            // cout << timestamp_now() << " [Server] Received HEARTBEAT from " << p.body.elect.id << endl;
+            replica_manager_.on_heartbeat_received(p.body.elect.id);
+            
+            if (p.body.elect.id < id_ && !replica_manager_.is_primary() && !election_.is_in_progress()) {
+                //cout << timestamp_now() << " [Server] Detected leader " << p.body.elect.id << " with lower ID. Starting election." << endl;
+                if (election_.start_election()) become_primary();
+            }
+            break;
+        case PKT_ELECTION:
+            //cout << timestamp_now() << " [Server] Received ELECTION from " << p.body.elect.id << endl;
+            if (replica_manager_.is_primary()) {
+                //cout << timestamp_now() << " [Server] Received ELECTION while Primary. Re-announcing victory." << endl;
+                election_.announce_victory();
+            } else if (election_.handle_election(p, src)) {
+                //cout << timestamp_now() << " [Server] Election triggered by peer. Starting my own election." << endl;
+                if (election_.start_election()) become_primary();
+            }
+            break;
+        case PKT_ELECTION_ACK:
+            //cout << timestamp_now() << " [Server] Received ELECTION_ACK from " << p.body.elect.id << endl;
+            election_.handle_election_ack(p, src);
+            break;
+        case PKT_COORDINATOR:
+            //cout << timestamp_now() << " [Server] Received COORDINATOR from " << p.body.coord.id << endl;
+            handle_coordinator(p, src);
+            break;
+        case PKT_STATE_UPDATE:
+            if (!replica_manager_.is_primary()) {
+                //cout << timestamp_now() << " [Server] Received STATE_UPDATE seqn " << p.seqn << " from " << p.body.repl.src_addr << endl;
+                replica_manager_.handle_replication(p);
+            } else {
+                //cout << timestamp_now() << " [Server] Received STATE_UPDATE but I am PRIMARY. Ignoring." << endl;
+            }
+            break;
+        case PKT_SNAPSHOT_REQ:
+            if (replica_manager_.is_primary()) {
+                //cout << timestamp_now() << " [Server] Received SNAPSHOT_REQ from " << sockaddr_to_ipstr(src) << endl;
+                replica_manager_.handle_snapshot_req(src);
+            }
+            break;
+        case PKT_SNAPSHOT_DATA:
+            //cout << timestamp_now() << " [Server] Received SNAPSHOT_DATA." << endl;
+            replica_manager_.handle_snapshot_data(p);
+            break;
+        case PKT_SNAPSHOT_STATS:
+            //cout << timestamp_now() << " [Server] Received SNAPSHOT_STATS." << endl;
+            replica_manager_.handle_snapshot_stats(p);
+            break;
+        default:
+            //cout << timestamp_now() << " [Server] Received unknown packet type " << p.type << endl;
+            break;
+    }
 }
 
 void Server::start_interface() {
@@ -80,8 +177,10 @@ void Server::start_interface() {
                 print_queue_.pop();
                 lock.unlock();
 
-                if (info.status != "OK" && info.status != "DUP")
+                if (info.status != "OK" && info.status != "DUP"){
+                    //cout << timestamp_now() << " " << info.status << endl;
                     continue;
+                }
 
                 string status_str = (info.status != "OK")
                                     ? (string(" ") + info.status + "!")
@@ -104,8 +203,19 @@ void Server::start_interface() {
 }
 
 void Server::handle_request(packet_t p, sockaddr_in src) {
+    if (!replica_manager_.is_primary()) {
+        //cout << "replica manager not primary" << endl;
+        return;
+    }
+
     uint32_t src_ip = ntohl(src.sin_addr.s_addr);
-    auto [ack_seq, balance, error] = state_.process_req(src_ip, p.seqn, p.body.req.dest_addr, p.body.req.value);
+    uint16_t src_port = ntohs(src.sin_port);
+    auto [ack_seq, balance, error] = state_.process_req(src_ip, src_port, p.seqn, p.body.req.dest_addr, p.body.req.value);
+
+    // Replication
+    if (error == NO_ERROR) {
+        replica_manager_.replicate_request(p, src_ip, src_port);
+    }
 
     //cerr << "error = " << error << endl;
 
@@ -149,4 +259,49 @@ void Server::handle_request(packet_t p, sockaddr_in src) {
         print_queue_.push({client_ip, p.seqn, dest_ip, p.body.req.value, status, stats});
     }
     print_cv_.notify_one();
+}
+
+void Server::handle_coordinator(packet_t p, sockaddr_in src) {
+    uint32_t new_leader = p.body.coord.id;
+    replica_manager_.set_leader_id(new_leader);
+    replica_manager_.set_primary(new_leader == id_);
+    election_.stop();
+    if (replica_manager_.is_primary()) notify_clients_leader_change();
+    
+    // Treat coordinator msg as heartbeat to reset timer
+    replica_manager_.on_heartbeat_received(new_leader); 
+    
+    if (!replica_manager_.is_primary()) {
+        if (state_.get_stats().num_transactions > 0)
+            replica_manager_.send_snapshot_to_leader();
+        else
+            replica_manager_.request_snapshot();
+    }
+    
+    //cout << timestamp_now() << " New Coordinator: " << new_leader << (replica_manager_.is_primary() ? " (Me)" : "") << endl;
+}
+
+void Server::become_primary() {
+    replica_manager_.set_primary(true);
+    replica_manager_.set_leader_id(id_);
+    election_.announce_victory();
+    cout << timestamp_now() << "this server is the new coordinator (ID: " << id_ << ")" << endl;
+    notify_clients_leader_change();
+}
+
+void Server::notify_clients_leader_change() {
+    auto clients = state_.get_all_clients();
+    packet_t p{};
+    p.type = PKT_LEADER_CHANGE;
+    p.seqn = 0;
+    packet_to_network(p);
+    
+    for (const auto& c : clients) {
+        if (c.port == 0) continue;
+        sockaddr_in dest{};
+        dest.sin_family = AF_INET;
+        dest.sin_addr.s_addr = htonl(c.address);
+        dest.sin_port = htons(c.port);
+        udp_send(sock_, &p, sizeof(p), &dest);
+    }
 }

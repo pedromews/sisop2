@@ -12,6 +12,8 @@ add_executable(server
     src/udp_util.cpp
     src/discovery.cpp
     src/utils.cpp
+    src/replica_manager.cpp
+    src/election.cpp
 )
 
 # Client executable

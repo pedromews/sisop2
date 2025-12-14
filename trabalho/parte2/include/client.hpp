@@ -24,7 +24,7 @@ class Client {
         void stop();
 
     private:
-        void start_discovery();
+        void find_server();
         void start_interface();
         void start_processing();
 
@@ -32,7 +32,6 @@ class Client {
         uint16_t port_;
         sockaddr_in server_addr_;
         socklen_t server_len_;
-        std::thread discovery_thread_;
         std::thread interface_thread_;
         std::thread processing_thread_;
 
@@ -43,7 +42,7 @@ class Client {
         std::mutex input_mtx_;
         std::queue<std::pair<std::string, uint32_t>> input_queue_;
 
-        bool discovered_ = false;
+        std::atomic<bool> discovered_{false};
         std::atomic<bool> running_{true};
 
         static constexpr double DISCOVERY_TIMEOUT_SEC = 0.5;

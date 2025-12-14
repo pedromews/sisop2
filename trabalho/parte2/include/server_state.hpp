@@ -6,9 +6,11 @@
 #include <cstdint>
 #include <utility>
 #include "packet.hpp"
+#include <vector>
 
 struct ClientEntry {
     uint32_t address;
+    uint16_t port;
     uint32_t last_req;
     uint32_t balance;
 };
@@ -30,11 +32,21 @@ enum ErrorCode {
 class ServerState {
     public:
         ServerState(uint32_t registration_balance);
-        void add_client(uint32_t ip);
-        std::tuple<uint32_t,uint32_t,uint32_t> process_req(uint32_t src_ip, uint32_t seqn, uint32_t dest_ip, uint32_t value);
+        void add_client(uint32_t ip, uint16_t port);
+        std::tuple<uint32_t,uint32_t,uint32_t> process_req(uint32_t src_ip, uint16_t src_port, uint32_t seqn, uint32_t dest_ip, uint32_t value);
+        
+        // Applies a state update from the Primary (skips validation)
+        void apply_replication(uint32_t src_ip, uint16_t src_port, uint32_t dest_ip, uint32_t value, uint32_t seqn);
+        void update_client_absolute(uint32_t addr, uint16_t port, uint32_t balance, uint32_t last_req);
+        void update_global_stats(uint64_t num_transactions, uint64_t total_transferred);
+        
         void remove_client(uint32_t ip);
 
         ServerStats get_stats();
+        
+        // For full state synchronization (new backup)
+        std::vector<ClientEntry> get_all_clients();
+        void restore_state(const std::vector<ClientEntry>& clients, const ServerStats& stats);
 
     private:
         std::unordered_map<uint32_t, ClientEntry> clients_;
