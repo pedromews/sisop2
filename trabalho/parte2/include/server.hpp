@@ -35,6 +35,7 @@ class Server {
         void handle_coordinator(packet_t p, sockaddr_in src);
         void become_primary();
         void notify_clients_leader_change();
+        void broadcast_presence();
         
         int sock_;
         uint32_t id_;

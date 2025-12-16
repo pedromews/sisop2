@@ -32,6 +32,7 @@ void ReplicaManager::send_heartbeats() {
     p.body.elect.id = id_;
     packet_to_network(p);
     
+    std::lock_guard<std::mutex> lock(peers_mtx_);
     for (const auto& peer : peers_) {
         udp_send(sock_, &p, sizeof(p), &peer.addr);
     }
@@ -63,6 +64,7 @@ void ReplicaManager::replicate_request(const packet_t& original_req, uint32_t sr
     repl.body.repl.value = original_req.body.req.value;
     
     packet_to_network(repl);
+    std::lock_guard<std::mutex> lock(peers_mtx_);
     for (const auto& peer : peers_) {
         udp_send(sock_, &repl, sizeof(repl), &peer.addr);
     }
@@ -77,6 +79,7 @@ void ReplicaManager::request_snapshot() {
     p.type = PKT_SNAPSHOT_REQ;
     packet_to_network(p);
     
+    std::lock_guard<std::mutex> lock(peers_mtx_);
     for (const auto& peer : peers_) {
         if (peer.id == leader_id_) {
             udp_send(sock_, &p, sizeof(p), &peer.addr);
@@ -133,6 +136,7 @@ void ReplicaManager::send_snapshot_to_leader() {
         p.body.snap.last_req = c.last_req;
         p.body.snap.balance = c.balance;
         packet_to_network(p);
+        std::lock_guard<std::mutex> lock(peers_mtx_);
         for (const auto& peer : peers_) {
             if (peer.id == leader_id_) {
                 udp_send(sock_, &p, sizeof(p), &peer.addr);
@@ -147,4 +151,13 @@ void ReplicaManager::handle_snapshot_stats(const packet_t& p) {
     uint64_t num = ((uint64_t)p.body.stats.num_trans_hi << 32) | p.body.stats.num_trans_lo;
     uint64_t total = ((uint64_t)p.body.stats.total_trans_hi << 32) | p.body.stats.total_trans_lo;
     state_.update_global_stats(num, total);
+}
+
+void ReplicaManager::add_peer(const Peer& peer) {
+    std::lock_guard<std::mutex> lock(peers_mtx_);
+    for (const auto& p : peers_) {
+        if (p.id == peer.id) return;
+    }
+    peers_.push_back(peer);
+    // cout << "ReplicaManager added peer " << peer.id << endl;
 }

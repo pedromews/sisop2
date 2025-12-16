@@ -95,3 +95,10 @@ void Election::stop() {
 bool Election::higher_responded() const {
     return received_ack_;
 }
+
+void Election::add_peer(const Peer& peer) {
+    for (const auto& p : peers_) {
+        if (p.id == peer.id) return;
+    }
+    peers_.push_back(peer);
+}

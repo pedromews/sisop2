@@ -20,6 +20,8 @@ constexpr uint16_t PKT_LEADER_CHANGE = 14;    // Notify client
 constexpr uint16_t PKT_SNAPSHOT_REQ = 15;     // Backup asks for state
 constexpr uint16_t PKT_SNAPSHOT_DATA = 16;    // Primary sends state
 constexpr uint16_t PKT_SNAPSHOT_STATS = 17;   // Global stats sync
+constexpr uint16_t PKT_SERVER_DESC = 18;      // Server Discovery
+constexpr uint16_t PKT_SERVER_DESC_ACK = 19;  // Server Discovery ACK
 
 #pragma pack(push,1)
 struct request {
@@ -63,6 +65,11 @@ struct snapshot_stats {
     uint32_t total_trans_lo;
 };
 
+struct server_desc {
+    uint32_t id;
+    uint16_t port;
+};
+
 typedef struct packet {
     uint16_t type;
     uint32_t seqn;
@@ -74,6 +81,7 @@ typedef struct packet {
         coordinator coord;
         snapshot_data snap;
         snapshot_stats stats;
+        server_desc sdesc;
     } body;
 } packet_t;
 #pragma pack(pop)
@@ -110,6 +118,9 @@ inline void packet_to_network(packet_t& p) {
         p.body.stats.num_trans_lo = htonl(p.body.stats.num_trans_lo);
         p.body.stats.total_trans_hi = htonl(p.body.stats.total_trans_hi);
         p.body.stats.total_trans_lo = htonl(p.body.stats.total_trans_lo);
+    } else if (t == PKT_SERVER_DESC || t == PKT_SERVER_DESC_ACK) {
+        p.body.sdesc.id = htonl(p.body.sdesc.id);
+        p.body.sdesc.port = htons(p.body.sdesc.port);
     }
 }
 
@@ -143,5 +154,8 @@ inline void packet_to_host(packet_t& p) {
         p.body.stats.num_trans_lo = ntohl(p.body.stats.num_trans_lo);
         p.body.stats.total_trans_hi = ntohl(p.body.stats.total_trans_hi);
         p.body.stats.total_trans_lo = ntohl(p.body.stats.total_trans_lo);
+    } else if (p.type == PKT_SERVER_DESC || p.type == PKT_SERVER_DESC_ACK) {
+        p.body.sdesc.id = ntohl(p.body.sdesc.id);
+        p.body.sdesc.port = ntohs(p.body.sdesc.port);
     }
 }

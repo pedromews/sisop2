@@ -23,6 +23,7 @@ public:
     void announce_victory();
     void stop();
     bool higher_responded() const;
+    void add_peer(const Peer& peer);
 
 private:
     uint32_t id_;

@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 class ReplicaManager {
 public:
@@ -33,6 +34,8 @@ public:
     void handle_snapshot_data(const packet_t& p);
     void send_snapshot_to_leader();
     void handle_snapshot_stats(const packet_t& p);
+    
+    void add_peer(const Peer& peer);
 
 private:
     uint32_t id_;
@@ -44,4 +47,5 @@ private:
     uint32_t leader_id_;
     
     std::chrono::steady_clock::time_point last_heartbeat_received_;
+    std::mutex peers_mtx_;
 };

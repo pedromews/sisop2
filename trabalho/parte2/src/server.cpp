@@ -11,6 +11,8 @@ using namespace std;
 Server::Server(uint16_t port, uint32_t id, std::vector<Peer> peers, uint32_t registration_balance)
     : sock_(create_udp_server_socket(port)), id_(id), peers_(peers), state_(registration_balance),
       replica_manager_(id, peers, sock_, state_), election_(id, peers, sock_) {
+    int yes = 1;
+    setsockopt(sock_, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
     cout << timestamp_now()
         << " num_transactions 0 total_transferred 0 total_balance 0" << endl;
 }
@@ -19,10 +21,12 @@ void Server::run() {
     start_interface();
 
     // Bully Algorithm: Start election immediately upon recovery/startup
-    //cout << timestamp_now() << " [Server] Starting up. Initiating election." << endl;
+    cout << timestamp_now() << " [Server] Starting up. Initiating election." << endl;
+    broadcast_presence();
     if (election_.start_election()) become_primary();
 
     auto last_hb_sent = std::chrono::steady_clock::now();
+    auto last_presence_sent = std::chrono::steady_clock::now();
 
     while (true) {
         // Periodic tasks
@@ -37,17 +41,23 @@ void Server::run() {
         } else {
             // Check for leader failure
             if (replica_manager_.check_heartbeat_timeout() && !election_.is_in_progress()) {
-                //cout << timestamp_now() << " Leader timeout. Starting election." << endl;
+                cout << timestamp_now() << " Leader timeout. Starting election." << endl;
                 if (election_.start_election()) become_primary();
             }
+        }
+
+        // Broadcast presence periodically (every 3s) to ensure network convergence
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_presence_sent).count() > 3000) {
+            broadcast_presence();
+            last_presence_sent = now;
         }
         
         if (election_.check_timeout()) {
             if (!election_.higher_responded()) {
-                //cout << timestamp_now() << " Election timed out (no higher response). I am Coordinator." << endl;
+                cout << timestamp_now() << " Election timed out (no higher response). I am Coordinator." << endl;
                 become_primary();
             } else {
-                //cout << timestamp_now() << " Election timed out (higher node failed). Restarting." << endl;
+                cout << timestamp_now() << " Election timed out (higher node failed). Restarting." << endl;
                 if (election_.start_election()) become_primary();
             }
         }
@@ -73,7 +83,7 @@ void Server::handle_exit(const sockaddr_in& src) {
 
     try {
         state_.remove_client(client_ip);
-        cout << timestamp_now() << " Client " << client_ip_str << " has exited." << endl;
+        cout << timestamp_now() << " client " << client_ip_str << " has exited." << endl;
         
         auto stats = state_.get_stats();
         // cout << "Updated stats - num_transactions: " << stats.num_transactions
@@ -101,11 +111,11 @@ void Server::process_packet(packet_t p, sockaddr_in src) {
             break;
         case PKT_REQ:
             if (replica_manager_.is_primary()) {
-                //cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << ". Processing." << endl;
+                cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << ". Processing." << endl;
                 thread worker(&Server::handle_request, this, p, src);
                 worker.detach();
             } else {
-                //cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << " but I am BACKUP. Ignoring." << endl;
+                cout << timestamp_now() << " [Server] Received REQ seqn " << p.seqn << " from " << sockaddr_to_ipstr(src) << " but I am BACKUP. Ignoring." << endl;
             }
             break;
         case PKT_EXIT:
@@ -115,53 +125,106 @@ void Server::process_packet(packet_t p, sockaddr_in src) {
             // cout << timestamp_now() << " [Server] Received HEARTBEAT from " << p.body.elect.id << endl;
             replica_manager_.on_heartbeat_received(p.body.elect.id);
             
+            // Conflict resolution: If I am primary but receive heartbeat from higher ID, step down.
+            if (replica_manager_.is_primary() && p.body.elect.id > id_) {
+                cout << timestamp_now() << " [Server] Detected higher ID " << p.body.elect.id << " acting as leader. Stepping down." << endl;
+                packet_t coord_pkt{};
+                coord_pkt.body.coord.id = p.body.elect.id;
+                handle_coordinator(coord_pkt, src);
+            }
+            
             if (p.body.elect.id < id_ && !replica_manager_.is_primary() && !election_.is_in_progress()) {
-                //cout << timestamp_now() << " [Server] Detected leader " << p.body.elect.id << " with lower ID. Starting election." << endl;
+                cout << timestamp_now() << " [Server] Detected leader " << p.body.elect.id << " with lower ID. Starting election." << endl;
                 if (election_.start_election()) become_primary();
             }
             break;
         case PKT_ELECTION:
-            //cout << timestamp_now() << " [Server] Received ELECTION from " << p.body.elect.id << endl;
+            cout << timestamp_now() << " [Server] Received ELECTION from " << p.body.elect.id << endl;
             if (replica_manager_.is_primary()) {
-                //cout << timestamp_now() << " [Server] Received ELECTION while Primary. Re-announcing victory." << endl;
+                cout << timestamp_now() << " [Server] Received ELECTION while Primary. Re-announcing victory." << endl;
                 election_.announce_victory();
             } else if (election_.handle_election(p, src)) {
-                //cout << timestamp_now() << " [Server] Election triggered by peer. Starting my own election." << endl;
+                cout << timestamp_now() << " [Server] Election triggered by peer. Starting my own election." << endl;
                 if (election_.start_election()) become_primary();
             }
             break;
         case PKT_ELECTION_ACK:
-            //cout << timestamp_now() << " [Server] Received ELECTION_ACK from " << p.body.elect.id << endl;
+            cout << timestamp_now() << " [Server] Received ELECTION_ACK from " << p.body.elect.id << endl;
             election_.handle_election_ack(p, src);
             break;
         case PKT_COORDINATOR:
-            //cout << timestamp_now() << " [Server] Received COORDINATOR from " << p.body.coord.id << endl;
+            cout << timestamp_now() << " [Server] Received COORDINATOR from " << p.body.coord.id << endl;
             handle_coordinator(p, src);
             break;
         case PKT_STATE_UPDATE:
             if (!replica_manager_.is_primary()) {
-                //cout << timestamp_now() << " [Server] Received STATE_UPDATE seqn " << p.seqn << " from " << p.body.repl.src_addr << endl;
+                cout << timestamp_now() << " [Server] Received STATE_UPDATE seqn " << p.seqn << " from " << p.body.repl.src_addr << endl;
                 replica_manager_.handle_replication(p);
             } else {
-                //cout << timestamp_now() << " [Server] Received STATE_UPDATE but I am PRIMARY. Ignoring." << endl;
+                cout << timestamp_now() << " [Server] Received STATE_UPDATE but I am PRIMARY. Ignoring." << endl;
             }
             break;
         case PKT_SNAPSHOT_REQ:
             if (replica_manager_.is_primary()) {
-                //cout << timestamp_now() << " [Server] Received SNAPSHOT_REQ from " << sockaddr_to_ipstr(src) << endl;
+                cout << timestamp_now() << " [Server] Received SNAPSHOT_REQ from " << sockaddr_to_ipstr(src) << endl;
                 replica_manager_.handle_snapshot_req(src);
             }
             break;
         case PKT_SNAPSHOT_DATA:
-            //cout << timestamp_now() << " [Server] Received SNAPSHOT_DATA." << endl;
+            cout << timestamp_now() << " [Server] Received SNAPSHOT_DATA." << endl;
             replica_manager_.handle_snapshot_data(p);
             break;
         case PKT_SNAPSHOT_STATS:
-            //cout << timestamp_now() << " [Server] Received SNAPSHOT_STATS." << endl;
+            cout << timestamp_now() << " [Server] Received SNAPSHOT_STATS." << endl;
             replica_manager_.handle_snapshot_stats(p);
             break;
+        case PKT_SERVER_DESC: {
+            if (p.body.sdesc.id == id_) break;
+            cout << timestamp_now() << " [Server] Discovered peer " << p.body.sdesc.id << endl;
+            Peer peer{p.body.sdesc.id, src};
+            peer.addr.sin_port = htons(p.body.sdesc.port);
+            replica_manager_.add_peer(peer);
+            election_.add_peer(peer);
+            
+            // Send ACK
+            packet_t ack{};
+            ack.type = PKT_SERVER_DESC_ACK;
+            ack.body.sdesc.id = id_;
+            ack.body.sdesc.port = ntohs(src.sin_port); // Assuming symmetric port, or use configured port
+            // Better to use the port we are listening on, which we know
+            sockaddr_in my_addr{}; socklen_t len = sizeof(my_addr);
+            getsockname(sock_, (sockaddr*)&my_addr, &len);
+            ack.body.sdesc.port = ntohs(my_addr.sin_port);
+            packet_to_network(ack);
+            udp_send(sock_, &ack, sizeof(ack), &peer.addr);
+            
+            // If I am primary, send a heartbeat immediately so they know I am leader
+            if (replica_manager_.is_primary()) {
+                packet_t hb{};
+                hb.type = PKT_HEARTBEAT;
+                hb.body.elect.id = id_;
+                packet_to_network(hb);
+                udp_send(sock_, &hb, sizeof(hb), &peer.addr);
+            }
+            break;
+        }
+        case PKT_SERVER_DESC_ACK: {
+            Peer peer{p.body.sdesc.id, src};
+            peer.addr.sin_port = htons(p.body.sdesc.port);
+            replica_manager_.add_peer(peer);
+            election_.add_peer(peer);
+            
+            if (replica_manager_.is_primary()) {
+                packet_t hb{};
+                hb.type = PKT_HEARTBEAT;
+                hb.body.elect.id = id_;
+                packet_to_network(hb);
+                udp_send(sock_, &hb, sizeof(hb), &peer.addr);
+            }
+            break;
+        }
         default:
-            //cout << timestamp_now() << " [Server] Received unknown packet type " << p.type << endl;
+            cout << timestamp_now() << " [Server] Received unknown packet type " << p.type << endl;
             break;
     }
 }
@@ -178,7 +241,7 @@ void Server::start_interface() {
                 lock.unlock();
 
                 if (info.status != "OK" && info.status != "DUP"){
-                    //cout << timestamp_now() << " " << info.status << endl;
+                    cout << timestamp_now() << " " << info.status << endl;
                     continue;
                 }
 
@@ -204,7 +267,7 @@ void Server::start_interface() {
 
 void Server::handle_request(packet_t p, sockaddr_in src) {
     if (!replica_manager_.is_primary()) {
-        //cout << "replica manager not primary" << endl;
+        cout << "replica manager not primary" << endl;
         return;
     }
 
@@ -278,14 +341,14 @@ void Server::handle_coordinator(packet_t p, sockaddr_in src) {
             replica_manager_.request_snapshot();
     }
     
-    //cout << timestamp_now() << " New Coordinator: " << new_leader << (replica_manager_.is_primary() ? " (Me)" : "") << endl;
+    cout << timestamp_now() << " new coordinator: " << new_leader << (replica_manager_.is_primary() ? " (me)" : "") << endl;
 }
 
 void Server::become_primary() {
     replica_manager_.set_primary(true);
     replica_manager_.set_leader_id(id_);
     election_.announce_victory();
-    cout << timestamp_now() << "this server is the new coordinator (ID: " << id_ << ")" << endl;
+    cout << timestamp_now() << " this server is the new coordinator (ID: " << id_ << ")" << endl;
     notify_clients_leader_change();
 }
 
@@ -304,4 +367,21 @@ void Server::notify_clients_leader_change() {
         dest.sin_port = htons(c.port);
         udp_send(sock_, &p, sizeof(p), &dest);
     }
+}
+
+void Server::broadcast_presence() {
+    packet_t p{};
+    p.type = PKT_SERVER_DESC;
+    p.body.sdesc.id = id_;
+    sockaddr_in my_addr{}; socklen_t len = sizeof(my_addr);
+    getsockname(sock_, (sockaddr*)&my_addr, &len);
+    p.body.sdesc.port = ntohs(my_addr.sin_port);
+    packet_to_network(p);
+
+    sockaddr_in bcast{};
+    bcast.sin_family = AF_INET;
+    bcast.sin_port = my_addr.sin_port;
+    bcast.sin_addr.s_addr = INADDR_BROADCAST;
+    
+    udp_send(sock_, &p, sizeof(p), &bcast);
 }
